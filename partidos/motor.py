@@ -16,9 +16,9 @@ def get_tecnica_por_tipo(personaje_slug, tipo):
     """Devuelve una técnica aleatoria del personaje según el tipo de evento."""
     try:
         p = Personaje.objects.get(slug=personaje_slug)
-        tecnicas = list(
-            Tecnica.objects.filter(creadores=p, subtipo__contains=tipo)
-        )
+        todas_tecnicas = list(Tecnica.objects.filter(creadores=p))
+        # Filtrar en Python por subtipo
+        tecnicas = [t for t in todas_tecnicas if tipo in (t.subtipo or [])]
         if tecnicas:
             t = random.choice(tecnicas)
             return {
@@ -188,8 +188,8 @@ def simular_partido(plantilla_local, nombre_local, plantilla_rival, nombre_rival
                 tec_parada = get_tecnica_por_tipo(portero['slug'],  'parada')
 
                 # Calcular probabilidad de gol según stats
-                poder_tiro   = tirador.get('remate', 50) + (tec_tiro['poder']   if tec_tiro   else 0)
-                poder_parada = portero.get('defensa', 50) + (tec_parada['poder'] if tec_parada else 0)
+                poder_tiro   = tirador.get('remate', 50) + (tec_tiro.get('poder', 0)   if tec_tiro   else 0)
+                poder_parada = portero.get('defensa', 50) + (tec_parada.get('poder', 0) if tec_parada else 0)
                 prob_gol     = poder_tiro / (poder_tiro + poder_parada + 1)
                 es_gol       = random.random() < prob_gol
 
