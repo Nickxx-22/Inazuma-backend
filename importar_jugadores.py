@@ -39,6 +39,11 @@ except json.JSONDecodeError as e:
 creados = 0
 errores = 0
 
+def fix_montana(valor):
+    if isinstance(valor, str):
+        return valor.replace('Monta\u00f1a', 'Montaña')
+    return valor
+
 for j in jugadores:
     try:
         stats       = j.get('stats', {})
@@ -50,7 +55,7 @@ for j in jugadores:
                 'nombre':          j.get('name', ''),
                 'sexo':            j.get('sex', 'M'),
                 'posicion':        j.get('position', ''),
-                'elemento':        j.get('element', ''),
+                'elemento': fix_montana(j.get('element', '')),
                 'naturaleza':      j.get('nature', ''),
                 'tier':            j.get('tier', ''),
                 'es_capitan':      j.get('isCaptain', False),

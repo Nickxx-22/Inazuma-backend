@@ -33,6 +33,11 @@ except json.JSONDecodeError as e:
 creados = 0
 errores = 0
 
+def fix_montana(valor):
+    if isinstance(valor, str):
+        return valor.replace('Monta\u00f1a', 'Montaña')
+    return valor
+
 for t in tecnicas:
     try:
         cost = t.get('cost', {})
@@ -43,7 +48,7 @@ for t in tecnicas:
                 'nombre':          t.get('name', ''),
                 'tipo':            t.get('type', ''),
                 'subtipo':         t.get('subtype', []),
-                'elemento':        t.get('element', ''),
+                'elemento': fix_montana(t.get('element', '')),
                 'imagen_elemento': t.get('element_image', {}).get('url', ''),
                 'video_url':       t.get('videoUrl', {}).get('url', ''),
                 'poder_base':      t.get('basePower', 0),

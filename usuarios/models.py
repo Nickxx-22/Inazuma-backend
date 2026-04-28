@@ -12,6 +12,7 @@ class Usuario(AbstractUser):
     role                = models.CharField(max_length=10, choices=ROLES, default='user')
     favoritos           = models.ManyToManyField(Personaje, related_name='favoritos_de', blank=True)
     favoritos_tecnicas  = models.ManyToManyField(Tecnica,   related_name='favoritos_de', blank=True)
+    equipos_guardados   = models.JSONField(default=dict, blank=True)
 
     def __str__(self):
         return f"{self.username} ({self.role})"
