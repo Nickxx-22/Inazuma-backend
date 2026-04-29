@@ -983,7 +983,7 @@ async function insertarTecnicas() {
   },
 
   "creador": ["Jude_Sharp_T1", "Jude_Sharp_T1R"],
-  "heredero": ["Erik_Eagle_T1", "Axel_Blaze_T1", "Daniel_Hatch_T1", "Joe_King_T1", "David_Samford_T1"],
+  "heredero": ["Erik_Eagle_T1", "Axel_Blaze_T1", "Daniel_Hatch_T1", "Joseph_King_T1", "David_Samford_T1"],
   "copia": []
 },
 

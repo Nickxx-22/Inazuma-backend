@@ -26,17 +26,16 @@ try:
     tecnicas = json.loads(datos_str)
     print(f"Técnicas encontradas: {len(tecnicas)}")
 except json.JSONDecodeError as e:
-    print(f"Error parseando JSON en posición {e.pos}: {e.msg}")
-    print(f"Contexto: ...{datos_str[max(0,e.pos-80):e.pos+80]}...")
+    print(f"Error parseando JSON: {e}")
     exit()
-
-creados = 0
-errores = 0
 
 def fix_montana(valor):
     if isinstance(valor, str):
         return valor.replace('Monta\u00f1a', 'Montaña')
     return valor
+
+creados = 0
+errores = 0
 
 for t in tecnicas:
     try:
@@ -48,7 +47,7 @@ for t in tecnicas:
                 'nombre':          t.get('name', ''),
                 'tipo':            t.get('type', ''),
                 'subtipo':         t.get('subtype', []),
-                'elemento': fix_montana(t.get('element', '')),
+                'elemento':        fix_montana(t.get('element', '')),
                 'imagen_elemento': t.get('element_image', {}).get('url', ''),
                 'video_url':       t.get('videoUrl', {}).get('url', ''),
                 'poder_base':      t.get('basePower', 0),
@@ -57,32 +56,30 @@ for t in tecnicas:
             }
         )
 
-        # Relación creador (es un string o string vacío)
-        creador_slug = t.get('creador', '')
-        if creador_slug and isinstance(creador_slug, str):
-            try:
-                creador = Personaje.objects.get(slug=creador_slug)
-                tecnica.creadores.add(creador)
-            except Personaje.DoesNotExist:
-                pass
+        # ⚠️ Solo limpiar si estás seguro de reconstruir todo
+        tecnica.creadores.clear()
+        tecnica.herederos.clear()
+        tecnica.copias.clear()
 
-        # Relación herederos (es una lista)
-        for slug in t.get('heredero', []):
-            try:
-                personaje = Personaje.objects.get(slug=slug)
-                tecnica.herederos.add(personaje)
-            except Personaje.DoesNotExist:
-                pass
+        def add_relaciones(lista, campo):
+            if isinstance(lista, str):
+                lista = [lista]
 
-        # Relación copias (es una lista)
-        for slug in t.get('copia', []):
-            try:
-                personaje = Personaje.objects.get(slug=slug)
-                tecnica.copias.add(personaje)
-            except Personaje.DoesNotExist:
-                pass
+            for slug in lista:
+                if not slug:
+                    continue
+                try:
+                    personaje = Personaje.objects.get(slug=slug)
+                    getattr(tecnica, campo).add(personaje)
+                except Personaje.DoesNotExist:
+                    print(f"⚠️ Personaje no encontrado: {slug}")
+
+        add_relaciones(t.get('creador', []), 'creadores')
+        add_relaciones(t.get('heredero', []), 'herederos')
+        add_relaciones(t.get('copia', []), 'copias')
 
         creados += 1
+
     except Exception as e:
         print(f"Error con {t.get('_id', '?')}: {e}")
         errores += 1
