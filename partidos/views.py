@@ -168,29 +168,60 @@ class SimularPartidoView(APIView):
             'ganador':         nombre_equipo if victoria else nombre_rival,
         }
 
+        torneo_finalizado = False
+        es_campeon = False
+
         if victoria:
             # Avanzar de ronda o ganar torneo
             torneo.ronda_actual += 1
             if torneo.ronda_actual > 4:
                 torneo.estado         = 'finalizado'
                 torneo.finalizado_en  = timezone.now()
+                es_campeon            = True
                 est.campeon           = True
                 est.save()
+                torneo_finalizado     = True
         else:
             torneo.estado        = 'finalizado'
             torneo.finalizado_en = timezone.now()
+            torneo_finalizado    = True
 
         torneo.cuadro = cuadro
         torneo.save()
 
+        # Preparar próximo rival si no está finalizado el torneo
+        proximo_rival = None
+        if not torneo_finalizado:
+            ronda_proxima_key = f'ronda_{torneo.ronda_actual}'
+            proximos_enfrentamientos = torneo.cuadro.get(ronda_proxima_key, [])
+            for e in proximos_enfrentamientos:
+                if e.get('local', {}).get('es_usuario') or e.get('visitante', {}).get('es_usuario'):
+                    local = e.get('local', {})
+                    visitante = e.get('visitante', {})
+                    proximo_rival = {
+                        'local':     local.get('nombre'),
+                        'visitante': visitante.get('nombre'),
+                        'es_usuario_local': local.get('es_usuario', False),
+                    }
+                    break
+
         return Response({
             'partido_id':       partido.id,
+            'equipo_local':     enfrentamiento['local']['nombre'],
+            'equipo_visitante': enfrentamiento['visitante']['nombre'],
             'goles_local':      goles_local,
             'goles_visitante':  goles_visitante,
             'resultado':        'victoria' if victoria else 'derrota',
             'eventos':          eventos,
+            'estadisticas_partido': {
+                'goleadores':   sorted(stats['goleadores'].values(), key=lambda x: x['goles'], reverse=True)[:5],
+                'porteros':     sorted(stats['porteros'].values(),   key=lambda x: x['paradas'], reverse=True)[:5],
+                'regates':      sorted(stats['regates'].values(),    key=lambda x: x['regates'], reverse=True)[:5],
+            },
             'torneo_estado':    torneo.estado,
             'ronda_actual':     torneo.ronda_actual,
+            'es_campeon':       es_campeon,
+            'proximo_rival':    proximo_rival,
         })
 
 
@@ -204,11 +235,30 @@ class TorneoDetailView(APIView):
             return Response({'message': 'Torneo no encontrado'}, status=status.HTTP_404_NOT_FOUND)
 
         est = torneo.estadisticas
+
+        # Obtener próximo rival si el torneo está en curso
+        proximo_rival = None
+        if torneo.estado == 'en_curso':
+            ronda_key = f'ronda_{torneo.ronda_actual}'
+            enfrentamientos = torneo.cuadro.get(ronda_key, [])
+            for e in enfrentamientos:
+                if not e.get('jugado'):
+                    local = e.get('local', {})
+                    visitante = e.get('visitante', {})
+                    if local.get('es_usuario') or visitante.get('es_usuario'):
+                        proximo_rival = {
+                            'local':     local.get('nombre'),
+                            'visitante': visitante.get('nombre'),
+                            'es_usuario_local': local.get('es_usuario', False),
+                        }
+                        break
+
         return Response({
             'torneo_id':      torneo.id,
             'estado':         torneo.estado,
             'ronda_actual':   torneo.ronda_actual,
             'cuadro':         torneo.cuadro,
+            'proximo_rival':  proximo_rival,
             'estadisticas': {
                 'partidos_jugados':  est.partidos_jugados,
                 'partidos_ganados':  est.partidos_ganados,
