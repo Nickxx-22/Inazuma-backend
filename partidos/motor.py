@@ -137,7 +137,7 @@ def simular_partido(plantilla_local, nombre_local, plantilla_rival, nombre_rival
 
         # ── REGATE ──────────────────────────────────────────────
         if tipo_evento == 'regate':
-            candidatos = ataca.get('MD', []) + ataca.get('FW', [])
+            candidatos = ataca.get('DF', []) + ataca.get('MD', []) + ataca.get('FW', [])
             jugador    = pick_con_tecnica(candidatos, 'regate')
             if jugador:
                 tecnica = get_tecnica_por_tipo(jugador['slug'], 'regate')
@@ -147,8 +147,11 @@ def simular_partido(plantilla_local, nombre_local, plantilla_rival, nombre_rival
                     f"min {minuto}' — {jugador['nombre']} ({nombre_atacante}) "
                     f"supera a su rival con {tecnica['nombre']}!"
                 )
-                s = stats['regates'].setdefault(jugador['slug'], {'nombre': jugador['nombre'], 'regates': 0})
-                s['regates'] += 1
+                # Jugadores con más poder tienen más probabilidad de completar el regate
+                factor_poder = 1 + (jugador.get('poder', 50) - 50) * 0.002
+                if random.random() < min(0.95, 0.6 * factor_poder):
+                    s = stats['regates'].setdefault(jugador['slug'], {'nombre': jugador['nombre'], 'regates': 0})
+                    s['regates'] += 1
 
         # ── ROBO ────────────────────────────────────────────────
         elif tipo_evento == 'robo':
@@ -171,7 +174,7 @@ def simular_partido(plantilla_local, nombre_local, plantilla_rival, nombre_rival
                 evento['jugador'] = jugador['nombre']
                 evento['descripcion'] = (
                     f"min {minuto}' — ¡Ocasión! {jugador['nombre']} ({nombre_atacante}) "
-                    f"se queda solo ante el portero!"
+                    f"se queda solo ante el portero!, y la falla el disparo..."
                 )
 
         # ── TIRO ────────────────────────────────────────────────
@@ -184,8 +187,13 @@ def simular_partido(plantilla_local, nombre_local, plantilla_rival, nombre_rival
                 tec_tiro   = get_tecnica_por_tipo(tirador['slug'], 'tiro')
                 tec_parada = get_tecnica_por_tipo(portero['slug'],  'parada')
 
-                poder_tiro   = tirador.get('remate', 50) + (tec_tiro['poder']   if tec_tiro   else 0)
-                poder_parada = portero.get('defensa', 50) + (tec_parada['poder'] if tec_parada else 0)
+                # Factor de poder — jugadores con más poder son más efectivos
+                # El poder influye un 30% en el cálculo final
+                factor_tirador = 1 + (tirador.get('poder', 50) - 50) * 0.003
+                factor_portero = 1 + (portero.get('poder',  50) - 50) * 0.003
+
+                poder_tiro   = (tirador.get('remate', 50) + (tec_tiro['poder']   if tec_tiro   else 0)) * factor_tirador
+                poder_parada = (portero.get('defensa', 50) + (tec_parada['poder'] if tec_parada else 0)) * factor_portero
                 prob_gol     = poder_tiro / (poder_tiro + poder_parada + 1)
                 es_gol       = random.random() < prob_gol
 
