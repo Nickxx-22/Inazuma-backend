@@ -53,6 +53,9 @@ class EstadisticasTorneo(models.Model):
     # Regates — {slug: {nombre, regates}}
     regates     = models.JSONField(default=dict)
 
+    # Robos — {slug: {nombre, robos}}
+    robos = models.JSONField(default=dict)
+
     # Resumen general
     partidos_jugados  = models.IntegerField(default=0)
     partidos_ganados  = models.IntegerField(default=0)

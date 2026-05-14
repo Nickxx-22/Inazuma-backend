@@ -156,6 +156,9 @@ class SimularPartidoView(APIView):
         for slug, data in stats['regates'].items():
             r = est.regates.setdefault(slug, {'nombre': data['nombre'], 'regates': 0})
             r['regates'] += data['regates']
+        for slug, data in stats['robos'].items():
+            r = est.robos.setdefault(slug, {'nombre': data['nombre'], 'robos': 0})
+            r['robos'] += data['robos']    
 
         est.save()
 
@@ -217,6 +220,7 @@ class SimularPartidoView(APIView):
                 'goleadores':   sorted(stats['goleadores'].values(), key=lambda x: x['goles'], reverse=True)[:5],
                 'porteros':     sorted(stats['porteros'].values(),   key=lambda x: x['paradas'], reverse=True)[:5],
                 'regates':      sorted(stats['regates'].values(),    key=lambda x: x['regates'], reverse=True)[:5],
+                'robos':        sorted(stats['robos'].values(),      key=lambda x: x['robos'], reverse=True)[:5],
             },
             'torneo_estado':    torneo.estado,
             'ronda_actual':     torneo.ronda_actual,
@@ -269,6 +273,7 @@ class TorneoDetailView(APIView):
                 'goleadores':        sorted(est.goleadores.values(), key=lambda x: x['goles'], reverse=True)[:5],
                 'porteros':          sorted(est.porteros.values(),   key=lambda x: x['paradas'], reverse=True)[:5],
                 'regates':           sorted(est.regates.values(),    key=lambda x: x['regates'], reverse=True)[:5],
+                'robos':             sorted(est.robos.values(),      key=lambda x: x['robos'], reverse=True)[:5],
             }
         })
 

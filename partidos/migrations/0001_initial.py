@@ -18,6 +18,7 @@ class Migration(migrations.Migration):
                 ('goleadores', models.JSONField(default=dict)),
                 ('porteros', models.JSONField(default=dict)),
                 ('regates', models.JSONField(default=dict)),
+                ('robos', models.JSONField(default=dict)),
                 ('partidos_jugados', models.IntegerField(default=0)),
                 ('partidos_ganados', models.IntegerField(default=0)),
                 ('goles_marcados', models.IntegerField(default=0)),

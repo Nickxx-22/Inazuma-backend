@@ -1,6 +1,7 @@
 import random
 from personajes.models import Personaje
 from tecnicas.models import Tecnica
+from equipos.models import Equipo
 
 RONDA_NOMBRES = {
     1: 'Dieciseisavos',
@@ -110,6 +111,7 @@ def simular_partido(plantilla_local, nombre_local, plantilla_rival, nombre_rival
         'goleadores': {},
         'porteros':   {},
         'regates':    {},
+        'robos':      {},
     }
 
     minutos = sorted(random.sample(range(1, 91), random.randint(22, 32)))
@@ -166,6 +168,8 @@ def simular_partido(plantilla_local, nombre_local, plantilla_rival, nombre_rival
                     f"min {minuto}' — {jugador['nombre']} ({nombre_defensor}) "
                     f"roba el balón con {tecnica['nombre']}!"
                 )
+                r = stats['robos'].setdefault(jugador['slug'], {'nombre': jugador['nombre'], 'robos': 0})
+                r['robos'] += 1
 
         # ── OCASIÓN ─────────────────────────────────────────────
         elif tipo_evento == 'ocasion':
@@ -179,8 +183,10 @@ def simular_partido(plantilla_local, nombre_local, plantilla_rival, nombre_rival
 
         # ── TIRO ────────────────────────────────────────────────
         elif tipo_evento == 'tiro':
-            tirador = pick(ataca.get('FW', []) + ataca.get('MD', []))
-            portero = pick(defiende.get('GK', []))
+            candidatos_tiro = ataca.get('FW', []) + ataca.get('MD', [])
+            tirador = pick_con_tecnica(candidatos_tiro, 'tiro') or pick(candidatos_tiro)
+            candidatos_gk = defiende.get('GK', [])
+            portero = pick_con_tecnica(candidatos_gk, 'parada') or pick(candidatos_gk)
 
             if tirador and portero:
                 evento['jugador'] = tirador['nombre']
@@ -264,20 +270,20 @@ def simular_partido(plantilla_local, nombre_local, plantilla_rival, nombre_rival
 
 
 def sortear_torneo(equipo_usuario, nombre_usuario):
-    from equipos.models import Equipo
+    
 
-    equipos_reales  = list(Equipo.objects.order_by('?')[:8])
-    nombres_rivales = []
+    equipos_reales = list(
+        Equipo.objects
+            .exclude(nombre__iexact=nombre_usuario)
+            .order_by('?')[:15]
+    )
+    nombres_rivales = [
+        {'nombre': eq.nombre, 'slug': eq.slug, 'es_real': True}
+        for eq in equipos_reales
+    ]
 
-    for eq in equipos_reales:
-        nombres_rivales.append({'nombre': eq.nombre, 'slug': eq.slug, 'es_real': True})
-
-    while len(nombres_rivales) < 15:
-        nombres_rivales.append({
-            'nombre':  f"Equipo Misterioso {random.randint(100, 999)}",
-            'slug':    None,
-            'es_real': False,
-        })
+    if len(nombres_rivales) < 15:
+        raise ValueError('No hay suficientes equipos reales disponibles para sortear el torneo.')
 
     random.shuffle(nombres_rivales)
 

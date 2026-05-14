@@ -50,7 +50,7 @@ class PersonajeSerializer(serializers.ModelSerializer):
                 'relation': 'creador',
                 'poder_base': tecnica.poder_base,
                 'subtipo': tecnica.subtipo,
-                'video_path': tecnica.video_path,
+                'video_url': tecnica.video_url,
             })
 
         # Añadir técnicas heredadas
@@ -61,7 +61,7 @@ class PersonajeSerializer(serializers.ModelSerializer):
                 'relation': 'heredero',
                 'poder_base': tecnica.poder_base,
                 'subtipo': tecnica.subtipo,
-                'video_path': tecnica.video_path,
+                'video_url': tecnica.video_url,
             })
 
         # Añadir técnicas copiadas
@@ -72,7 +72,7 @@ class PersonajeSerializer(serializers.ModelSerializer):
                 'relation': 'copia',
                 'poder_base': tecnica.poder_base,
                 'subtipo': tecnica.subtipo,
-                'video_path': tecnica.video_path,
+                'video_url': tecnica.video_url,
             })
 
         return tecnicas
