@@ -11,57 +11,115 @@ RONDA_NOMBRES = {
     5: 'Final',
 }
 
-# ── Helpers ──────────────────────────────────────────────────────
+# ── Helpers y Caché ──────────────────────────────────────────────
 
-def get_tecnica_por_tipo(personaje_slug, tipo):
-    """Devuelve una técnica aleatoria del personaje según el tipo de evento."""
-    try:
-        p = Personaje.objects.get(slug=personaje_slug)
-        todas_tecnicas = list(Tecnica.objects.filter(creadores=p))
-        tecnicas = [t for t in todas_tecnicas if tipo in (t.subtipo or [])]
-        if tecnicas:
-            t = random.choice(tecnicas)
-            return {
+def cargar_cache_partido(plantilla_local, plantilla_rival):
+    """
+    Pre-carga todos los jugadores y técnicas en memoria (diccionarios) 
+    haciendo solo 2 consultas a la BD en lugar de cientos.
+    """
+    slugs_jugadores = []
+    
+    for plantilla in [plantilla_local, plantilla_rival]:
+        for pos, jugadores in plantilla.items():
+            for j in jugadores:
+                if 'slug' in j:
+                    slugs_jugadores.append(j['slug'])
+                    
+    slugs_jugadores = list(set(slugs_jugadores))
+    
+    # 1. Traer todos los jugadores en 1 sola consulta SQL
+    personajes_db = Personaje.objects.filter(slug__in=slugs_jugadores)
+    cache_jugadores = {p.slug: p for p in personajes_db}
+    
+    # 2. Traer todas las técnicas vinculadas a estos jugadores en 1 sola consulta
+    # prefetch_related evita consultas extra al buscar la relación ManyToMany
+    tecnicas_db = Tecnica.objects.filter(creadores__in=personajes_db).prefetch_related('creadores').distinct()
+    
+    cache_tecnicas_por_jugador = {slug: [] for slug in slugs_jugadores}
+    
+    for t in tecnicas_db:
+        # Al tener prefetch_related, este .all() no hace hit a la base de datos
+        for creador in t.creadores.all():
+            if creador.slug in cache_tecnicas_por_jugador:
+                cache_tecnicas_por_jugador[creador.slug].append(t)
+                
+    return cache_jugadores, cache_tecnicas_por_jugador
+
+
+def get_tecnica_por_tipo(personaje_slug, tipo, cache_jugadores, cache_tecnicas_por_jugador):
+    """Devuelve una técnica aleatoria del personaje según el tipo de evento desde la caché."""
+    jugador = cache_jugadores.get(personaje_slug)
+    if not jugador:
+        return None
+        
+    tecnicas_jugador = cache_tecnicas_por_jugador.get(personaje_slug, [])
+    tecnicas_validas = []
+    
+    for t in tecnicas_jugador:
+        subtipos = t.subtipo or []
+        if tipo in subtipos:
+            # --- Modificadores de Poder ---
+            # Usamos getattr por si la columna 'relacion' aún no existe en el modelo Tecnica
+            poder_base = t.poder_base
+            relacion = getattr(t, 'relacion', 'propia') 
+            
+            if relacion == 'heredero':
+                poder_base = int(poder_base * 0.5)
+            elif relacion == 'copia':
+                poder_base = int(poder_base * 0.3)
+                
+            tecnicas_validas.append({
                 'slug':      t.slug,
                 'nombre':    t.nombre,
-                'video_url': t.video_url,
-                'poder':     t.poder_base,
-            }
-    except Personaje.DoesNotExist:
-        pass
+                'video_url': getattr(t, 'video_url', ''),
+                'poder':     poder_base,
+            })
+            
+    if tecnicas_validas:
+        return random.choice(tecnicas_validas)
     return None
 
 
-def tiene_tecnica_tipo(personaje_slug, tipo):
-    """Comprueba si un jugador tiene al menos una técnica del tipo dado."""
-    try:
-        p = Personaje.objects.get(slug=personaje_slug)
-        todas = list(Tecnica.objects.filter(creadores=p))
-        return any(tipo in (t.subtipo or []) for t in todas)
-    except Personaje.DoesNotExist:
+def tiene_tecnica_tipo(personaje_slug, tipo, cache_jugadores, cache_tecnicas_por_jugador):
+    """Comprueba si un jugador tiene al menos una técnica del tipo dado desde la caché."""
+    if personaje_slug not in cache_jugadores:
         return False
+        
+    tecnicas_jugador = cache_tecnicas_por_jugador.get(personaje_slug, [])
+    for t in tecnicas_jugador:
+        subtipos = t.subtipo or []
+        if tipo in subtipos:
+            return True
+    return False
 
 
 def pick(lista):
     return random.choice(lista) if lista else None
 
 
-def pick_con_tecnica(lista, tipo):
-    """Elige un jugador aleatorio que tenga técnica del tipo requerido."""
-    candidatos = [j for j in lista if tiene_tecnica_tipo(j['slug'], tipo)]
+def pick_con_tecnica(lista, tipo, cache_jugadores, cache_tecnicas_por_jugador):
+    """Elige un jugador aleatorio que tenga técnica del tipo requerido, usando la caché."""
+    candidatos = [j for j in lista if tiene_tecnica_tipo(j['slug'], tipo, cache_jugadores, cache_tecnicas_por_jugador)]
     if candidatos:
         return random.choice(candidatos)
     return None
 
 
-def construir_plantilla(slots, characters_data):
+def construir_plantilla(slots, characters_data=None):
+    """Construye la plantilla en 1 sola query en lugar de 11."""
+    # Extraer todos los IDs primero
+    char_ids = [slot.get('characterId') for slot in slots if slot.get('characterId')]
+    
+    # Hacer 1 sola consulta SQL
+    personajes_db = Personaje.objects.filter(slug__in=char_ids)
+    p_dict = {p.slug: p for p in personajes_db}
+    
     plantilla = {'GK': [], 'DF': [], 'MD': [], 'FW': []}
     for slot in slots:
         char_id = slot.get('characterId')
-        if not char_id:
-            continue
-        try:
-            p = Personaje.objects.get(slug=char_id)
+        p = p_dict.get(char_id)
+        if p:
             plantilla[p.posicion].append({
                 'slug':     p.slug,
                 'nombre':   p.nombre,
@@ -72,8 +130,6 @@ def construir_plantilla(slots, characters_data):
                 'defensa':  p.defensa,
                 'agilidad': p.agilidad,
             })
-        except Personaje.DoesNotExist:
-            pass
     return plantilla
 
 
@@ -104,6 +160,9 @@ def generar_equipo_rival(equipo_db=None):
 # ── Motor principal ───────────────────────────────────────────────
 
 def simular_partido(plantilla_local, nombre_local, plantilla_rival, nombre_rival):
+    # ¡AQUÍ ESTÁ LA MAGIA! Carga todo a memoria antes de simular
+    cache_jugadores, cache_tecnicas = cargar_cache_partido(plantilla_local, plantilla_rival)
+    
     eventos        = []
     goles_local    = 0
     goles_visitante = 0
@@ -140,36 +199,37 @@ def simular_partido(plantilla_local, nombre_local, plantilla_rival, nombre_rival
         # ── REGATE ──────────────────────────────────────────────
         if tipo_evento == 'regate':
             candidatos = ataca.get('DF', []) + ataca.get('MD', []) + ataca.get('FW', [])
-            jugador    = pick_con_tecnica(candidatos, 'regate')
+            jugador    = pick_con_tecnica(candidatos, 'regate', cache_jugadores, cache_tecnicas)
             if jugador:
-                tecnica = get_tecnica_por_tipo(jugador['slug'], 'regate')
-                evento['jugador'] = jugador['nombre']
-                evento['tecnica'] = {'regate': tecnica}
-                evento['descripcion'] = (
-                    f"min {minuto}' — {jugador['nombre']} ({nombre_atacante}) "
-                    f"supera a su rival con {tecnica['nombre']}!"
-                )
-                # Jugadores con más poder tienen más probabilidad de completar el regate
-                factor_poder = 1 + (jugador.get('poder', 50) - 50) * 0.002
-                if random.random() < min(0.95, 0.6 * factor_poder):
-                    s = stats['regates'].setdefault(jugador['slug'], {'nombre': jugador['nombre'], 'regates': 0})
-                    s['regates'] += 1
+                tecnica = get_tecnica_por_tipo(jugador['slug'], 'regate', cache_jugadores, cache_tecnicas)
+                if tecnica:
+                    evento['jugador'] = jugador['nombre']
+                    evento['tecnica'] = {'regate': tecnica}
+                    evento['descripcion'] = (
+                        f"min {minuto}' — {jugador['nombre']} ({nombre_atacante}) "
+                        f"supera a su rival con {tecnica['nombre']}!"
+                    )
+                    factor_poder = 1 + (jugador.get('poder', 50) - 50) * 0.002
+                    if random.random() < min(0.95, 0.6 * factor_poder):
+                        s = stats['regates'].setdefault(jugador['slug'], {'nombre': jugador['nombre'], 'regates': 0})
+                        s['regates'] += 1
 
         # ── ROBO ────────────────────────────────────────────────
         elif tipo_evento == 'robo':
             candidatos = defiende.get('DF', []) + defiende.get('MD', [])
-            jugador    = pick_con_tecnica(candidatos, 'quitar')
+            jugador    = pick_con_tecnica(candidatos, 'quitar', cache_jugadores, cache_tecnicas)
             if jugador:
-                tecnica = get_tecnica_por_tipo(jugador['slug'], 'quitar')
-                evento['jugador'] = jugador['nombre']
-                evento['equipo']  = nombre_defensor
-                evento['tecnica'] = {'robo': tecnica}
-                evento['descripcion'] = (
-                    f"min {minuto}' — {jugador['nombre']} ({nombre_defensor}) "
-                    f"roba el balón con {tecnica['nombre']}!"
-                )
-                r = stats['robos'].setdefault(jugador['slug'], {'nombre': jugador['nombre'], 'robos': 0})
-                r['robos'] += 1
+                tecnica = get_tecnica_por_tipo(jugador['slug'], 'quitar', cache_jugadores, cache_tecnicas)
+                if tecnica:
+                    evento['jugador'] = jugador['nombre']
+                    evento['equipo']  = nombre_defensor
+                    evento['tecnica'] = {'robo': tecnica}
+                    evento['descripcion'] = (
+                        f"min {minuto}' — {jugador['nombre']} ({nombre_defensor}) "
+                        f"roba el balón con {tecnica['nombre']}!"
+                    )
+                    r = stats['robos'].setdefault(jugador['slug'], {'nombre': jugador['nombre'], 'robos': 0})
+                    r['robos'] += 1
 
         # ── OCASIÓN ─────────────────────────────────────────────
         elif tipo_evento == 'ocasion':
@@ -178,23 +238,20 @@ def simular_partido(plantilla_local, nombre_local, plantilla_rival, nombre_rival
                 evento['jugador'] = jugador['nombre']
                 evento['descripcion'] = (
                     f"min {minuto}' — ¡Ocasión! {jugador['nombre']} ({nombre_atacante}) "
-                    f"se queda solo ante el portero!, y la falla el disparo..."
+                    f"se queda solo ante el portero, y la falla el disparo..."
                 )
 
         # ── TIRO ────────────────────────────────────────────────
         elif tipo_evento == 'tiro':
             candidatos_tiro = ataca.get('FW', []) + ataca.get('MD', [])
-            tirador = pick_con_tecnica(candidatos_tiro, 'tiro') or pick(candidatos_tiro)
+            tirador = pick_con_tecnica(candidatos_tiro, 'tiro', cache_jugadores, cache_tecnicas) or pick(candidatos_tiro)
             candidatos_gk = defiende.get('GK', [])
-            portero = pick_con_tecnica(candidatos_gk, 'parada') or pick(candidatos_gk)
+            portero = pick_con_tecnica(candidatos_gk, 'parada', cache_jugadores, cache_tecnicas) or pick(candidatos_gk)
 
             if tirador and portero:
-                evento['jugador'] = tirador['nombre']
-                tec_tiro   = get_tecnica_por_tipo(tirador['slug'], 'tiro')
-                tec_parada = get_tecnica_por_tipo(portero['slug'],  'parada')
+                tec_tiro   = get_tecnica_por_tipo(tirador['slug'], 'tiro', cache_jugadores, cache_tecnicas)
+                tec_parada = get_tecnica_por_tipo(portero['slug'], 'parada', cache_jugadores, cache_tecnicas)
 
-                # Factor de poder — jugadores con más poder son más efectivos
-                # El poder influye un 30% en el cálculo final
                 factor_tirador = 1 + (tirador.get('poder', 50) - 50) * 0.003
                 factor_portero = 1 + (portero.get('poder',  50) - 50) * 0.003
 
@@ -203,6 +260,7 @@ def simular_partido(plantilla_local, nombre_local, plantilla_rival, nombre_rival
                 prob_gol     = poder_tiro / (poder_tiro + poder_parada + 1)
                 es_gol       = random.random() < prob_gol
 
+                evento['jugador'] = tirador['nombre']
                 evento['tecnica'] = {
                     'tiro':   tec_tiro,
                     'parada': tec_parada,
@@ -247,7 +305,6 @@ def simular_partido(plantilla_local, nombre_local, plantilla_rival, nombre_rival
         pen_local    = random.randint(3, 5)
         pen_visitante = random.randint(3, 5)
 
-        # Aseguramos que no haya empate en penaltis
         while pen_local == pen_visitante:
             pen_visitante = random.randint(3, 5)
 
@@ -270,8 +327,6 @@ def simular_partido(plantilla_local, nombre_local, plantilla_rival, nombre_rival
 
 
 def sortear_torneo(equipo_usuario, nombre_usuario):
-    
-
     equipos_reales = list(
         Equipo.objects
             .exclude(nombre__iexact=nombre_usuario)
